@@ -1,0 +1,524 @@
+html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VIN Scanner App</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://unpkg.com/lucide-react@latest/dist/umd/lucide-react.js"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+        #root {
+            min-height: 100vh;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useRef } = React;
+        const { Camera, Search, Clock, Settings, Zap, Car, AlertTriangle, Wrench, Users, MapPin, DollarSign, RotateCcw, Upload, CameraOff, Eye, EyeOff, Trash2 } = lucideReact;
+
+        const App = () => {
+            const [activeTab, setActiveTab] = useState('scanner');
+            const [vinInput, setVinInput] = useState('');
+            const [searchResults, setSearchResults] = useState(null);
+            const [history, setHistory] = useState([]);
+            const [cameraActive, setCameraActive] = useState(false);
+            const [flashOn, setFlashOn] = useState(false);
+            const [cameraFacing, setCameraFacing] = useState('environment');
+            const [capturedImage, setCapturedImage] = useState(null);
+            const [processing, setProcessing] = useState(false);
+            const [error, setError] = useState('');
+            const videoRef = useRef(null);
+            const canvasRef = useRef(null);
+
+            // Mock vehicle data
+            const mockVehicleData = {
+                vin: '1HGCM82633A123456',
+                make: 'Honda',
+                model: 'Accord',
+                year: 2003,
+                trim: 'EX V6',
+                engine: '3.0L V6',
+                transmission: 'Automatic',
+                bodyStyle: 'Sedan',
+                fuelType: 'Gasoline',
+                driveType: 'FWD',
+                exteriorColor: 'Silver',
+                interiorColor: 'Gray'
+            };
+
+            const mockPricingData = {
+                retail: {
+                    excellent: 8500,
+                    good: 7200,
+                    fair: 5800,
+                    poor: 4200
+                },
+                wholesale: 3800,
+                tradeIn: 4500
+            };
+
+            const mockHistoryData = {
+                accidents: 1,
+                previousOwners: 3,
+                serviceRecords: 12,
+                recalls: 2,
+                titleIssues: false,
+                floodDamage: false,
+                lemonHistory: false,
+                mileageHistory: [
+                    { date: '2020-01', mileage: 85000 },
+                    { date: '2021-06', mileage: 98000 },
+                    { date: '2022-12', mileage: 112000 },
+                    { date: '2023-08', mileage: 125000 }
+                ]
+            };
+
+            // Load history from localStorage on mount
+            useEffect(() => {
+                const savedHistory = localStorage.getItem('vinHistory');
+                if (savedHistory) {
+                    setHistory(JSON.parse(savedHistory));
+                }
+            }, []);
+
+            // Save history to localStorage when it changes
+            useEffect(() => {
+                localStorage.setItem('vinHistory', JSON.stringify(history));
+            }, [history]);
+
+            const validateVIN = (vin) => {
+                const vinRegex = /^[A-HJ-NPR-Z0-9]{17}$/i;
+                return vinRegex.test(vin);
+            };
+
+            const extractVINFromImage = async (imageData) => {
+                // Simulate GPT Vision processing
+                setProcessing(true);
+                setError('');
+                
+                // Mock VIN extraction - in real app this would call GPT Vision API
+                setTimeout(() => {
+                    const mockVIN = '1HGCM82633A123456';
+                    setVinInput(mockVIN);
+                    setProcessing(false);
+                    setCameraActive(false);
+                    setCapturedImage(null);
+                    
+                    // Auto search after extraction
+                    handleSearch(mockVIN);
+                }, 2000);
+            };
+
+            const handleSearch = (vinToSearch = vinInput) => {
+                if (!validateVIN(vinToSearch)) {
+                    setError('Invalid VIN format. Must be 17 characters with no I, O, or Q.');
+                    return;
+                }
+
+                setError('');
+                
+                // Simulate API call
+                setTimeout(() => {
+                    const result = {
+                        vehicle: mockVehicleData,
+                        pricing: mockPricingData,
+                        history: mockHistoryData,
+                        timestamp: new Date().toISOString()
+                    };
+                    
+                    setSearchResults(result);
+                    
+                    // Add to history if not duplicate
+                    const existing = history.find(item => item.vin === vinToSearch);
+                    if (!existing) {
+                        setHistory(prev => [result, ...prev.slice(0, 9)]); // Keep last 10
+                    }
+                }, 1000);
+            };
+
+            const startCamera = async () => {
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({
+                        video: {
+                            facingMode: cameraFacing,
+                            torch: flashOn
+                        }
+                    });
+                    if (videoRef.current) {
+                        videoRef.current.srcObject = stream;
+                    }
+                    setCameraActive(true);
+                    setError('');
+                } catch (err) {
+                    setError('Camera access denied. Please enable camera permissions.');
+                    console.error('Camera error:', err);
+                }
+            };
+
+            const stopCamera = () => {
+                if (videoRef.current && videoRef.current.srcObject) {
+                    const tracks = videoRef.current.srcObject.getTracks();
+                    tracks.forEach(track => track.stop());
+                }
+                setCameraActive(false);
+            };
+
+            const captureImage = () => {
+                if (videoRef.current) {
+                    const canvas = canvasRef.current;
+                    const video = videoRef.current;
+                    canvas.width = video.videoWidth;
+                    canvas.height = video.videoHeight;
+                    canvas.getContext('2d').drawImage(video, 0, 0);
+                    const imageData = canvas.toDataURL('image/jpeg');
+                    setCapturedImage(imageData);
+                    stopCamera();
+                    extractVINFromImage(imageData);
+                }
+            };
+
+            const toggleFlash = () => {
+                setFlashOn(!flashOn);
+                // In real implementation, would update camera stream
+            };
+
+            const toggleCamera = () => {
+                setCameraFacing(cameraFacing === 'environment' ? 'user' : 'environment');
+                if (cameraActive) {
+                    stopCamera();
+                    setTimeout(startCamera, 100);
+                }
+            };
+
+            const clearHistory = () => {
+                setHistory([]);
+                localStorage.removeItem('vinHistory');
+            };
+
+            const removeFromHistory = (index) => {
+                setHistory(prev => prev.filter((_, i) => i !== index));
+            };
+
+            const ScannerTab = () => (
+                <div className="p-4">
+                    {!cameraActive && !capturedImage && (
+                        <div className="space-y-4">
+                            <div className="bg-gray-100 rounded-lg p-8 text-center">
+                                <Camera className="w-16 h-16 mx-auto text-gray-400 mb-4" />
+                                <h3 className="text-lg font-semibold mb-2">VIN Scanner</h3>
+                                <p className="text-gray-600 mb-4">Point your camera at the VIN number to scan</p>
+                                <button
+                                    onClick={startCamera}
+                                    className="bg-blue-600 text-white px-6 py-3 rounded-lg font-medium hover:bg-blue-700 transition-colors"
+                                >
+                                    Start Camera
+                                </button>
+                            </div>
+                            
+                            <div className="border-t pt-4">
+                                <h4 className="font-medium mb-3">Or upload an image</h4>
+                                <label className="flex items-center justify-center w-full h-32 border-2 border-dashed border-gray-300 rounded-lg cursor-pointer hover:border-blue-400 transition-colors">
+                                    <Upload className="w-8 h-8 text-gray-400 mr-2" />
+                                    <span className="text-gray-600">Choose image file</span>
+                                    <input type="file" className="hidden" accept="image/*" />
+                                </label>
+                            </div>
+                        </div>
+                    )}
+
+                    {cameraActive && (
+                        <div className="relative">
+                            <video
+                                ref={videoRef}
+                                autoPlay
+                                playsInline
+                                className="w-full h-64 object-cover rounded-lg"
+                            />
+                            <canvas ref={canvasRef} className="hidden" />
+                            
+                            <div className="absolute inset-0 flex items-center justify-center">
+                                <div className="border-2 border-green-500 w-4/5 h-16 rounded opacity-70"></div>
+                            </div>
+                            
+                            <div className="flex justify-center space-x-4 mt-4">
+                                <button
+                                    onClick={toggleFlash}
+                                    className={`p-3 rounded-full ${flashOn ? 'bg-yellow-500 text-white' : 'bg-white text-gray-600'}`}
+                                >
+                                    {flashOn ? <Eye className="w-6 h-6" /> : <EyeOff className="w-6 h-6" />}
+                                </button>
+                                <button
+                                    onClick={captureImage}
+                                    className="bg-red-600 text-white p-3 rounded-full hover:bg-red-700 transition-colors"
+                                >
+                                    <div className="w-6 h-6 bg-white rounded-full"></div>
+                                </button>
+                                <button
+                                    onClick={toggleCamera}
+                                    className="bg-white text-gray-600 p-3 rounded-full hover:bg-gray-100 transition-colors"
+                                >
+                                    <RotateCcw className="w-6 h-6" />
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
+                    {processing && (
+                        <div className="text-center py-8">
+                            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+                            <p className="text-gray-600">Extracting VIN from image...</p>
+                        </div>
+                    )}
+                </div>
+            );
+
+            const SearchTab = () => (
+                <div className="p-4">
+                    <div className="mb-6">
+                        <label className="block text-sm font-medium text-gray-700 mb-2">
+                            Enter VIN Number (17 characters)
+                        </label>
+                        <div className="flex space-x-2">
+                            <input
+                                type="text"
+                                value={vinInput}
+                                onChange={(e) => setVinInput(e.target.value.toUpperCase())}
+                                placeholder="1HGCM82633A123456"
+                                className="flex-1 px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                maxLength={17}
+                            />
+                            <button
+                                onClick={() => handleSearch()}
+                                className="bg-blue-600 text-white px-6 py-3 rounded-lg font-medium hover:bg-blue-700 transition-colors"
+                            >
+                                <Search className="w-5 h-5" />
+                            </button>
+                        </div>
+                        {error && <p className="text-red-500 text-sm mt-2">{error}</p>}
+                    </div>
+
+                    {searchResults && (
+                        <div className="space-y-6">
+                            {/* Vehicle Info */}
+                            <div className="bg-white rounded-lg p-4 shadow-sm">
+                                <div className="flex items-center mb-4">
+                                    <Car className="w-8 h-8 text-blue-600 mr-3" />
+                                    <div>
+                                        <h3 className="font-semibold text-lg">{searchResults.vehicle.year} {searchResults.vehicle.make} {searchResults.vehicle.model}</h3>
+                                        <p className="text-gray-600">{searchResults.vehicle.trim}</p>
+                                    </div>
+                                </div>
+                                <div className="grid grid-cols-2 gap-4 text-sm">
+                                    <div>
+                                        <p className="text-gray-500">Engine</p>
+                                        <p className="font-medium">{searchResults.vehicle.engine}</p>
+                                    </div>
+                                    <div>
+                                        <p className="text-gray-500">Transmission</p>
+                                        <p className="font-medium">{searchResults.vehicle.transmission}</p>
+                                    </div>
+                                    <div>
+                                        <p className="text-gray-500">Body Style</p>
+                                        <p className="font-medium">{searchResults.vehicle.bodyStyle}</p>
+                                    </div>
+                                    <div>
+                                        <p className="text-gray-500">Drive Type</p>
+                                        <p className="font-medium">{searchResults.vehicle.driveType}</p>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Pricing */}
+                            <div className="bg-white rounded-lg p-4 shadow-sm">
+                                <h3 className="font-semibold text-lg mb-4 flex items-center">
+                                    <DollarSign className="w-5 h-5 text-green-600 mr-2" />
+                                    Pricing Analysis
+                                </h3>
+                                <div className="space-y-3">
+                                    <div className="flex justify-between">
+                                        <span className="text-gray-600">Retail (Excellent)</span>
+                                        <span className="font-semibold text-green-600">${searchResults.pricing.retail.excellent.toLocaleString()}</span>
+                                    </div>
+                                    <div className="flex justify-between">
+                                        <span className="text-gray-600">Retail (Good)</span>
+                                        <span className="font-semibold text-green-600">${searchResults.pricing.retail.good.toLocaleString()}</span>
+                                    </div>
+                                    <div className="flex justify-between">
+                                        <span className="text-gray-600">Retail (Fair)</span>
+                                        <span className="font-semibold text-orange-600">${searchResults.pricing.retail.fair.toLocaleString()}</span>
+                                    </div>
+                                    <div className="flex justify-between">
+                                        <span className="text-gray-600">Retail (Poor)</span>
+                                        <span className="font-semibold text-red-600">${searchResults.pricing.retail.poor.toLocaleString()}</span>
+                                    </div>
+                                    <div className="flex justify-between pt-2 border-t">
+                                        <span className="text-gray-600">Wholesale</span>
+                                        <span className="font-semibold">${searchResults.pricing.wholesale.toLocaleString()}</span>
+                                    </div>
+                                    <div className="flex justify-between">
+                                        <span className="text-gray-600">Trade-in Value</span>
+                                        <span className="font-semibold text-blue-600">${searchResults.pricing.tradeIn.toLocaleString()}</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Vehicle History */}
+                            <div className="bg-white rounded-lg p-4 shadow-sm">
+                                <h3 className="font-semibold text-lg mb-4 flex items-center">
+                                    <Clock className="w-5 h-5 text-purple-600 mr-2" />
+                                    Vehicle History
+                                </h3>
+                                <div className="space-y-3">
+                                    <div className="flex items-center justify-between">
+                                        <div className="flex items-center">
+                                            <AlertTriangle className="w-5 h-5 text-red-600 mr-2" />
+                                            <span>Accidents</span>
+                                        </div>
+                                        <span className="font-semibold">{searchResults.history.accidents}</span>
+                                    </div>
+                                    <div className="flex items-center justify-between">
+                                        <div className="flex items-center">
+                                            <Users className="w-5 h-5 text-blue-600 mr-2" />
+                                            <span>Previous Owners</span>
+                                        </div>
+                                        <span className="font-semibold">{searchResults.history.previousOwners}</span>
+                                    </div>
+                                    <div className="flex items-center justify-between">
+                                        <div className="flex items-center">
+                                            <Wrench className="w-5 h-5 text-green-600 mr-2" />
+                                            <span>Service Records</span>
+                                        </div>
+                                        <span className="font-semibold">{searchResults.history.serviceRecords}</span>
+                                    </div>
+                                    <div className="flex items-center justify-between">
+                                        <div className="flex items-center">
+                                            <MapPin className="w-5 h-5 text-orange-600 mr-2" />
+                                            <span>Recalls</span>
+                                        </div>
+                                        <span className="font-semibold text-red-600">{searchResults.history.recalls}</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                </div>
+            );
+
+            const HistoryTab = () => (
+                <div className="p-4">
+                    <div className="flex justify-between items-center mb-4">
+                        <h2 className="text-lg font-semibold">Search History</h2>
+                        {history.length > 0 && (
+                            <button
+                                onClick={clearHistory}
+                                className="text-red-600 hover:text-red-800 flex items-center"
+                            >
+                                <Trash2 className="w-4 h-4 mr-1" />
+                                Clear All
+                            </button>
+                        )}
+                    </div>
+
+                    {history.length === 0 ? (
+                        <div className="text-center py-8">
+                            <Clock className="w-16 h-16 text-gray-300 mx-auto mb-4" />
+                            <p className="text-gray-500">No search history yet</p>
+                            <p className="text-gray-400 text-sm mt-2">Your VIN searches will appear here</p>
+                        </div>
+                    ) : (
+                        <div className="space-y-3">
+                            {history.map((item, index) => (
+                                <div key={index} className="bg-white rounded-lg p-4 shadow-sm">
+                                    <div className="flex justify-between items-start mb-2">
+                                        <div>
+                                            <h3 className="font-semibold">{item.vehicle.year} {item.vehicle.make} {item.vehicle.model}</h3>
+                                            <p className="text-sm text-gray-600 font-mono">{item.vehicle.vin}</p>
+                                        </div>
+                                        <button
+                                            onClick={() => removeFromHistory(index)}
+                                            className="text-gray-400 hover:text-red-600"
+                                        >
+                                            <Trash2 className="w-4 h-4" />
+                                        </button>
+                                    </div>
+                                    <div className="flex justify-between text-sm">
+                                        <span className="text-gray-600">
+                                            {new Date(item.timestamp).toLocaleDateString()}
+                                        </span>
+                                        <span className="font-semibold text-green-600">
+                                            ${item.pricing.retail.good.toLocaleString()}
+                                        </span>
+                                    </div>
+                                    <div className="flex items-center mt-2 text-xs text-gray-500">
+                                        <AlertTriangle className="w-3 h-3 mr-1" />
+                                        {item.history.accidents} accidents • {item.history.previousOwners} owners
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            );
+
+            return (
+                <div className="min-h-screen bg-gray-50">
+                    {/* Header */}
+                    <div className="bg-white shadow-sm">
+                        <div className="max-w-md mx-auto px-4 py-4">
+                            <h1 className="text-2xl font-bold text-center text-gray-900">VIN Scanner</h1>
+                            <p className="text-center text-gray-600 text-sm mt-1">Scan, search, and analyze vehicle history</p>
+                        </div>
+                    </div>
+
+                    {/* Main Content */}
+                    <div className="max-w-md mx-auto">
+                        {activeTab === 'scanner' && <ScannerTab />}
+                        {activeTab === 'search' && <SearchTab />}
+                        {activeTab === 'history' && <HistoryTab />}
+                    </div>
+
+                    {/* Bottom Navigation */}
+                    <div className="fixed bottom-0 left-0 right-0 bg-white border-t max-w-md mx-auto">
+                        <div className="flex justify-around">
+                            <button
+                                onClick={() => setActiveTab('scanner')}
+                                className={`flex flex-col items-center py-3 px-6 ${activeTab === 'scanner' ? 'text-blue-600' : 'text-gray-500'}`}
+                            >
+                                <Camera className="w-6 h-6 mb-1" />
+                                <span className="text-xs">Scanner</span>
+                            </button>
+                            <button
+                                onClick={() => setActiveTab('search')}
+                                className={`flex flex-col items-center py-3 px-6 ${activeTab === 'search' ? 'text-blue-600' : 'text-gray-500'}`}
+                            >
+                                <Search className="w-6 h-6 mb-1" />
+                                <span className="text-xs">Search</span>
+                            </button>
+                            <button
+                                onClick={() => setActiveTab('history')}
+                                className={`flex flex-col items-center py-3 px-6 ${activeTab === 'history' ? 'text-blue-600' : 'text-gray-500'}`}
+                            >
+                                <Clock className="w-6 h-6 mb-1" />
+                                <span className="text-xs">History</span>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
